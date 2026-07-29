@@ -78,6 +78,18 @@ REL_PATHS = {
     },
 }
 
+# The path a live host actually has the bundle installed at -- MUST match
+# merge_findings.py::VENDOR_COMPONENTS' component_path_linux/windows exactly,
+# since these records are meant to replace the synthesized ones in place.
+# --root (below) is where THIS INVOCATION reads files from, which differs
+# from this during local verification (--root points at the vendor/ payload
+# tree, not /opt/contoso/agent) -- component_path in the output always
+# reflects where the file lives on a real host, not where this scan read it.
+DEFAULT_INSTALL_ROOT = {
+    "linux": "/opt/contoso/agent",
+    "windows": "C:\\Program Files\\Contoso\\Agent",
+}
+
 
 def sha256_of(path: Path) -> str:
     h = hashlib.sha256()
@@ -113,7 +125,10 @@ DETECTORS = {
 }
 
 
-def scan(root: Path, os_name: str, asset_id: str, asset_name: str, asset_role: str, scan_date: str):
+def scan(root: Path, os_name: str, asset_id: str, asset_name: str, asset_role: str, scan_date: str, install_root: str = None):
+    if install_root is None:
+        install_root = DEFAULT_INSTALL_ROOT[os_name]
+
     records = []
     seq = 0
     for component, rel in REL_PATHS[os_name].items():
@@ -133,9 +148,13 @@ def scan(root: Path, os_name: str, asset_id: str, asset_name: str, asset_role: s
             continue
 
         seq += 1
-        component_path = str(rel) if os_name == "linux" else rel
-        # Present the path the way each OS's own tooling would show it.
-        full_path = ("/" + rel) if os_name == "linux" else (f"C:\\Program Files\\Contoso\\Agent\\{rel}")
+        # component_path is where the file lives on a real host
+        # (install_root), NOT where this invocation happened to read it from
+        # (--root, which during local verification is the vendor/ payload
+        # tree) -- this is what makes the record line up with
+        # merge_findings.py's VENDOR_COMPONENTS paths.
+        sep = "/" if os_name == "linux" else "\\"
+        full_path = install_root.rstrip("/\\") + sep + rel
         records.append({
             "signature_id": f"CTSO-EDR-{seq:04d}",
             "asset_id": asset_id,
@@ -157,11 +176,12 @@ def scan(root: Path, os_name: str, asset_id: str, asset_name: str, asset_role: s
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", required=True, type=Path, help="agent bundle root (e.g. /opt/contoso/agent, or the vendor/agent-linux/... payload dir for local verification)")
+    ap.add_argument("--root", required=True, type=Path, help="where THIS INVOCATION reads files from -- /opt/contoso/agent on a real host, or the vendor/agent-linux/... payload dir for local verification")
     ap.add_argument("--os", required=True, choices=["linux", "windows"])
     ap.add_argument("--asset-id", required=True)
     ap.add_argument("--asset-name", required=True)
     ap.add_argument("--asset-role", required=True)
+    ap.add_argument("--install-root", default=None, help="where the bundle lives on a REAL host, used to build component_path in the output records. Defaults to /opt/contoso/agent (linux) or 'C:\\Program Files\\Contoso\\Agent' (windows) -- override only if --root and the real install path genuinely differ (e.g. local verification always wants the default, a live SSM run against the real path also wants the default; this exists for anything unusual).")
     ap.add_argument("--scan-date", default=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
     ap.add_argument("-o", "--output", type=Path, default=None, help="write JSON here instead of stdout")
     args = ap.parse_args()
@@ -170,7 +190,7 @@ def main():
         print(f"error: --root {args.root} is not a directory", file=sys.stderr)
         sys.exit(2)
 
-    records = scan(args.root, args.os, args.asset_id, args.asset_name, args.asset_role, args.scan_date)
+    records = scan(args.root, args.os, args.asset_id, args.asset_name, args.asset_role, args.scan_date, args.install_root)
     out = json.dumps(records, indent=2)
     if args.output:
         args.output.write_text(out + "\n")

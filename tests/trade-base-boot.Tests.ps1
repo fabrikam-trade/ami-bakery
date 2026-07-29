@@ -81,6 +81,25 @@ Describe 'trade-base boot chain (bundle present)' {
         ($out | Where-Object { $_.cve_ref -eq 'GHSA-2cwj-8chv-9pp9' }).risk_level | Should -Be 'CRITICAL'
         ($out.source | Select-Object -Unique) | Should -Be 'contoso-agent-inventory-v1.0'
     }
+
+    It 'component_path reflects the real install path, not the local --root used for verification' {
+        # Regression guard: the scan tool must report where the bundle lives
+        # on a REAL host (/opt/contoso/agent/...), matching
+        # merge_findings.py's VENDOR_COMPONENTS paths exactly -- NOT wherever
+        # --root happened to point during this invocation. A prior version of
+        # this tool got this wrong for Linux (emitted "/lib/log4net.dll"
+        # instead of "/opt/contoso/agent/lib/log4net.dll"), which would have
+        # made every live-scan record fail to line up with the synthesized
+        # records it's supposed to replace.
+        $out = python3 $scanTool --root $bundle --os linux `
+            --asset-id ami-test --asset-name trade-base-test --asset-role test | ConvertFrom-Json
+        ($out | Where-Object { $_.component_name -eq 'log4net' }).component_path |
+            Should -Be '/opt/contoso/agent/lib/log4net.dll'
+        ($out | Where-Object { $_.component_name -eq 'OpenSSL' }).component_path |
+            Should -Be '/opt/contoso/agent/lib/libssl.so.1.0.0'
+        ($out | Where-Object { $_.component_name -eq 'pyyaml' }).component_path |
+            Should -Be '/opt/contoso/agent/collector/vendor/yaml/__init__.py'
+    }
 }
 
 Describe 'trade-base boot chain (bundle missing -- the confident delete)' {

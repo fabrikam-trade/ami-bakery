@@ -80,6 +80,18 @@ Describe 'trade-windows boot chain (bundle present)' {
         ($out | Where-Object { $_.cve_ref -eq 'GHSA-2cwj-8chv-9pp9' }).risk_level | Should -Be 'CRITICAL'
         ($out.source | Select-Object -Unique) | Should -Be 'contoso-agent-inventory-v1.0'
     }
+
+    It 'component_path reflects the real install path, not the local --root used for verification' {
+        # Regression guard -- see the matching test in trade-base-boot.Tests.ps1.
+        $out = python $scanTool --root $bundle --os windows `
+            --asset-id i-test --asset-name ledger-settle-test --asset-role test | ConvertFrom-Json
+        ($out | Where-Object { $_.component_name -eq 'log4net' }).component_path |
+            Should -Be 'C:\Program Files\Contoso\Agent\lib\log4net.dll'
+        ($out | Where-Object { $_.component_name -eq 'OpenSSL' }).component_path |
+            Should -Be 'C:\Program Files\Contoso\Agent\lib\ssleay32.dll'
+        ($out | Where-Object { $_.component_name -eq 'pyyaml' }).component_path |
+            Should -Be 'C:\Program Files\Contoso\Agent\collector\vendor\yaml\__init__.py'
+    }
 }
 
 Describe 'trade-windows boot chain (bundle missing -- the confident delete)' {

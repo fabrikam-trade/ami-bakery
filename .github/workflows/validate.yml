@@ -46,7 +46,14 @@ jobs:
           recs = json.load(open('/tmp/linux-scan.json'))
           assert len(recs) == 3, f'expected 3 records, got {len(recs)}'
           assert any(r['cve_ref'] == 'GHSA-2cwj-8chv-9pp9' and r['risk_level'] == 'CRITICAL' for r in recs)
-          print('OK: 3 records, log4net Critical present')
+          # component_path must reflect the REAL install path, not --root
+          # (regression guard -- a prior version emitted /lib/log4net.dll
+          # instead of /opt/contoso/agent/lib/log4net.dll on Linux).
+          by_name = {r['component_name']: r['component_path'] for r in recs}
+          assert by_name['log4net'] == '/opt/contoso/agent/lib/log4net.dll', by_name['log4net']
+          assert by_name['OpenSSL'] == '/opt/contoso/agent/lib/libssl.so.1.0.0', by_name['OpenSSL']
+          assert by_name['pyyaml'] == '/opt/contoso/agent/collector/vendor/yaml/__init__.py', by_name['pyyaml']
+          print('OK: 3 records, log4net Critical present, paths match VENDOR_COMPONENTS exactly')
           "
 
   boot-sim-linux:
