@@ -1,0 +1,7 @@
+Metadata-Version: 1.0
+Name: PyYAML
+Version: 3.13
+Summary: YAML parser and emitter for Python
+Home-page: http://pyyaml.org/wiki/PyYAML
+Author: Kirill Simonov
+License: MIT

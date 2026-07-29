@@ -1,0 +1,73 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  packer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-packer@v3
+      - name: validate trade-base
+        working-directory: packer/trade-base
+        run: |
+          packer init .
+          packer validate .
+      - name: validate trade-windows
+        working-directory: packer/trade-windows
+        run: |
+          packer init .
+          packer validate .
+
+  bundle-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install grype
+        run: curl -sSfL https://get.anchore.io/grype | sudo sh -s -- -b /usr/local/bin
+      - name: agent bundle scan reproduces the real log4net Critical
+        run: ./scripts/scan-bundle-ci.sh
+
+  inventory-scan-local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: local verification of the agent-inventory-scan tool
+        run: |
+          python3 scripts/agent-inventory-scan.py \
+            --root vendor/agent-linux/opt/contoso/agent --os linux \
+            --asset-id ami-test --asset-name trade-base-golden --asset-role test \
+            -o /tmp/linux-scan.json
+          python3 -c "
+          import json
+          recs = json.load(open('/tmp/linux-scan.json'))
+          assert len(recs) == 3, f'expected 3 records, got {len(recs)}'
+          assert any(r['cve_ref'] == 'GHSA-2cwj-8chv-9pp9' and r['risk_level'] == 'CRITICAL' for r in recs)
+          print('OK: 3 records, log4net Critical present')
+          "
+
+  boot-sim-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: run trade-base boot-chain tests (Pester)
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.5 -Force -SkipPublisherCheck
+          Invoke-Pester -Path tests/trade-base-boot.Tests.ps1 -CI
+
+  boot-sim-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: run trade-windows boot-chain tests (Pester)
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.5 -Force -SkipPublisherCheck
+          Invoke-Pester -Path tests/trade-windows-boot.Tests.ps1 -CI

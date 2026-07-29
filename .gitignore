@@ -1,2 +1,5 @@
 *.pkrvars.hcl
 manifest.json
+packer_cache/
+packer-manifest.json
+.DS_Store
