@@ -106,12 +106,17 @@ build {
     ]
   }
 
+  // No trailing slash on the agent-tools source either, so the scan tool
+  // lands at agent-tools\scripts\. A missed copy here must fail the bake --
+  // Copy-Item errors are non-terminating by default and would otherwise
+  // ship an AMI silently missing the scan tool.
   provisioner "powershell" {
     inline = [
+      "$ErrorActionPreference = 'Stop'",
       "& C:\\Windows\\Temp\\scripts\\install-agent-bundle.ps1 -Source C:\\Windows\\Temp\\Agent -Dest 'C:\\Program Files\\Contoso\\Agent'",
       "New-Item -ItemType Directory -Force -Path C:\\ProgramData\\Contoso | Out-Null",
       "Copy-Item C:\\Windows\\Temp\\scripts\\bootstrap.ps1 C:\\ProgramData\\Contoso\\bootstrap.ps1 -Force",
-      "Copy-Item C:\\Windows\\Temp\\agent-tools\\agent-inventory-scan.py C:\\ProgramData\\Contoso\\agent-inventory-scan.py -Force",
+      "Copy-Item C:\\Windows\\Temp\\agent-tools\\scripts\\agent-inventory-scan.py C:\\ProgramData\\Contoso\\agent-inventory-scan.py -Force",
     ]
   }
 
@@ -121,11 +126,14 @@ build {
     ]
   }
 
-  // Documented EC2Launch v2 image-prep command; sysprep owns the shutdown
+  // Windows Server 2019 ships EC2Launch v1 (v2's ec2launch.exe only exists
+  // on Server 2022+ or where v2 is retrofitted). InitializeInstance -Schedule
+  // re-arms first-boot init; SysprepInstance runs sysprep and shuts down
   // (disable_stop_instance on the source), Packer waits for stopped.
   provisioner "powershell" {
     inline = [
-      "& \"$env:ProgramFiles\\Amazon\\EC2Launch\\ec2launch.exe\" sysprep --shutdown=true",
+      "C:\\ProgramData\\Amazon\\EC2-Windows\\Launch\\Scripts\\InitializeInstance.ps1 -Schedule",
+      "C:\\ProgramData\\Amazon\\EC2-Windows\\Launch\\Scripts\\SysprepInstance.ps1",
     ]
     valid_exit_codes = [0, 1]
   }
